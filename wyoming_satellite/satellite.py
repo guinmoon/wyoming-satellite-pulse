@@ -897,6 +897,7 @@ class WakeStreamingSatellite(SatelliteBase):
 
         if self.is_streaming:
             # Forward to server
+            _LOGGER.debug("Forward mic to server")
             await self.event_to_server(event)
         else:
             # Forward to wake word service
