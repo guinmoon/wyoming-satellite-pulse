@@ -339,6 +339,7 @@ class SatelliteBase:
 
         while self.is_running:
             try:
+                _LOGGER.debug("Mic event: %s", event)
                 if mic_client is None:
                     mic_client = self._make_mic_client()
                     assert mic_client is not None
