@@ -339,7 +339,6 @@ class SatelliteBase:
 
         while self.is_running:
             try:
-                _LOGGER.debug("Mic event: %s", event)
                 if mic_client is None:
                     mic_client = self._make_mic_client()
                     assert mic_client is not None
@@ -368,6 +367,9 @@ class SatelliteBase:
                     ).event()
                 else:
                     audio_bytes = None
+
+                if event:
+                    _LOGGER.debug("Mic event: %s", event)
 
                 await self.event_from_mic(event, audio_bytes)
             except asyncio.CancelledError:
