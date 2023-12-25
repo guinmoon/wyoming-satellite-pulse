@@ -172,6 +172,7 @@ class SatelliteBase:
             await self.trigger_tts_stop()
         elif Detect.is_type(event.type):
             # Wake word detection started
+            _LOGGER.debug("Wake word detection started")
             await self.trigger_detect()
         elif Detection.is_type(event.type):
             # Wake word detected
@@ -179,9 +180,11 @@ class SatelliteBase:
             await self.trigger_detection(Detection.from_event(event))
         elif VoiceStarted.is_type(event.type):
             # STT start
+            _LOGGER.debug("Wake word STT start")
             await self.trigger_stt_start()
         elif VoiceStopped.is_type(event.type):
             # STT stop
+            _LOGGER.debug("STT stop")
             await self.trigger_stt_stop()
         elif Transcript.is_type(event.type):
             # STT text
@@ -897,6 +900,7 @@ class WakeStreamingSatellite(SatelliteBase):
             await self.event_to_server(event)
         else:
             # Forward to wake word service
+            _LOGGER.debug("Forward to wake word service")
             await self.event_to_wake(event)
 
     async def event_from_wake(self, event: Event) -> None:
