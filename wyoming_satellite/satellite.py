@@ -368,9 +368,6 @@ class SatelliteBase:
                 else:
                     audio_bytes = None
 
-                if event:
-                    _LOGGER.debug("Mic event: %s", event)
-
                 await self.event_from_mic(event, audio_bytes)
             except asyncio.CancelledError:
                 break
@@ -565,11 +562,13 @@ class SatelliteBase:
                     # From satellite to wake service
                     to_client_task = asyncio.create_task(self._wake_queue.get())
                     pending.add(to_client_task)
+                    
 
                 if from_client_task is None:
                     # From wake service to satellite
                     from_client_task = asyncio.create_task(wake_client.read_event())
                     pending.add(from_client_task)
+                    _LOGGER.debug("From wake service to satellite")
 
                 done, pending = await asyncio.wait(
                     pending, return_when=asyncio.FIRST_COMPLETED
@@ -577,6 +576,7 @@ class SatelliteBase:
 
                 if to_client_task in done:
                     # Event to go to wake service (audio)
+                    _LOGGER.debug("Event to go to wake service (audio)")
                     assert to_client_task is not None
                     event = to_client_task.result()
                     to_client_task = None
@@ -584,6 +584,7 @@ class SatelliteBase:
 
                 if from_client_task in done:
                     # Event from wake service (detection)
+                    _LOGGER.debug("Event from wake service (detection)")
                     assert from_client_task is not None
                     event = from_client_task.result()
                     from_client_task = None
