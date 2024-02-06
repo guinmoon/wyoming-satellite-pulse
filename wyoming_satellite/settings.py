@@ -1,6 +1,7 @@
 """Satellite settings."""
 from abc import ABC
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List, Optional
 
 
@@ -47,6 +48,12 @@ class MicSettings(ServiceSettings):
 
     samples_per_chunk: int = 1024
     """Samples to read at a time from mic command"""
+
+    mute_during_awake_wav: bool = True
+    """True if microphone audio should be muted while the awake WAV is playing."""
+
+    seconds_to_mute_after_awake_wav: float = 0.5
+    """Extra second(s) of microphone audio to mute after awake WAV has finished playing."""
 
     @property
     def needs_webrtc(self) -> bool:
@@ -109,6 +116,9 @@ class WakeSettings(ServiceSettings):
     channels: int = 1
     """Sample channels in wake word audio"""
 
+    refractory_seconds: Optional[float] = 5.0
+    """Seconds after a wake word detection before another detection is handled."""
+
 
 @dataclass(frozen=True)
 class VadSettings:
@@ -139,6 +149,7 @@ class EventSettings(ServiceSettings):
     streaming_stop: Optional[List[str]] = None
     detect: Optional[List[str]] = None
     detection: Optional[List[str]] = None
+    played: Optional[List[str]] = None
     transcript: Optional[List[str]] = None
     stt_start: Optional[List[str]] = None
     stt_stop: Optional[List[str]] = None
@@ -146,6 +157,8 @@ class EventSettings(ServiceSettings):
     tts_start: Optional[List[str]] = None
     tts_stop: Optional[List[str]] = None
     error: Optional[List[str]] = None
+    connected: Optional[List[str]] = None
+    disconnected: Optional[List[str]] = None
 
 
 @dataclass(frozen=True)
@@ -153,8 +166,12 @@ class SatelliteSettings:
     """Wyoming satellite settings."""
 
     mic: MicSettings
-    vad: VadSettings
-    wake: WakeSettings
-    snd: SndSettings
-    event: EventSettings
+    vad: VadSettings = field(default_factory=VadSettings)
+    wake: WakeSettings = field(default_factory=WakeSettings)
+    snd: SndSettings = field(default_factory=SndSettings)
+    event: EventSettings = field(default_factory=EventSettings)
+
     restart_timeout: float = 5.0
+
+    debug_recording_dir: Optional[Path] = None
+    """Path to directory where debug audio is written."""

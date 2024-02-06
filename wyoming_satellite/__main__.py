@@ -1,19 +1,16 @@
-#!/usr/bin/env python3
+"""Main entry point for Wyoming satellite."""
 import argparse
 import asyncio
 import logging
-import shlex
 import sys
-import time
-import uuid
 from functools import partial
 from pathlib import Path
-from typing import List, Optional
 
-from wyoming.event import Event
-from wyoming.info import Attribution, Describe, Info, Satellite
-from wyoming.server import AsyncEventHandler, AsyncServer, AsyncTcpServer
+from wyoming.info import Attribution, Info, Satellite
+from wyoming.server import AsyncServer, AsyncTcpServer
 
+from . import __version__
+from .event_handler import SatelliteEventHandler
 from .satellite import (
     AlwaysStreamingSatellite,
     SatelliteBase,
@@ -28,7 +25,13 @@ from .settings import (
     VadSettings,
     WakeSettings,
 )
-from .utils import run_event_command
+from .utils import (
+    get_mac_address,
+    needs_silero,
+    needs_webrtc,
+    run_event_command,
+    split_command,
+)
 
 _LOGGER = logging.getLogger()
 _DIR = Path(__file__).parent
@@ -70,6 +73,17 @@ async def main() -> None:
         "--mic-noise-suppression", type=int, default=0, choices=(0, 1, 2, 3, 4)
     )
     parser.add_argument("--mic-auto-gain", type=int, default=0, choices=list(range(32)))
+    parser.add_argument(
+        "--mic-seconds-to-mute-after-awake-wav",
+        type=float,
+        default=0.5,
+        help="Seconds to mute microphone after awake wav is finished playing (default: 0.5)",
+    )
+    parser.add_argument(
+        "--mic-no-mute-during-awake-wav",
+        action="store_true",
+        help="Don't mute the microphone while awake wav is being played",
+    )
 
     # Sound output
     parser.add_argument("--snd-uri", help="URI of Wyoming sound service")
@@ -120,6 +134,12 @@ async def main() -> None:
         type=int,
         default=1,
         help="Sample channels of wake-command (default: 1)",
+    )
+    parser.add_argument(
+        "--wake-refractory-seconds",
+        type=float,
+        default=5.0,
+        help="Seconds after a wake word detection before another detection is handled (default: 5)",
     )
 
     # Voice activity detector
@@ -174,6 +194,10 @@ async def main() -> None:
         help="Command to run when text to speech response stops",
     )
     parser.add_argument(
+        "--tts-played-command",
+        help="Command to run when text-to-speech audio stopped playing",
+    )
+    parser.add_argument(
         "--streaming-start-command",
         help="Command to run when audio streaming starts",
     )
@@ -184,6 +208,14 @@ async def main() -> None:
     parser.add_argument(
         "--error-command",
         help="Command to run when an error occurs",
+    )
+    parser.add_argument(
+        "--connected-command",
+        help="Command to run when connected to the server",
+    )
+    parser.add_argument(
+        "--disconnected-command",
+        help="Command to run when disconnected from the server",
     )
 
     # Sounds
@@ -214,7 +246,13 @@ async def main() -> None:
         help="Host address for zeroconf discovery (default: detect)",
     )
     #
+    parser.add_argument(
+        "--debug-recording-dir", help="Directory to store audio for debugging"
+    )
     parser.add_argument("--debug", action="store_true", help="Log DEBUG messages")
+    parser.add_argument(
+        "--log-format", default=logging.BASIC_FORMAT, help="Format for log messages"
+    )
     args = parser.parse_args()
 
     # Validate args
@@ -247,8 +285,14 @@ async def main() -> None:
     if args.vad and (args.wake_uri or args.wake_command):
         _LOGGER.warning("VAD is not used with local wake word detection")
 
-    logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.INFO, format=args.log_format
+    )
     _LOGGER.debug(args)
+
+    if args.debug_recording_dir:
+        args.debug_recording_dir = Path(args.debug_recording_dir)
+        _LOGGER.info("Recording audio to %s", args.debug_recording_dir)
 
     wyoming_info = Info(
         satellite=Satellite(
@@ -257,13 +301,14 @@ async def main() -> None:
             description=args.name,
             attribution=Attribution(name="", url=""),
             installed=True,
+            version=__version__,
         )
     )
 
     settings = SatelliteSettings(
         mic=MicSettings(
             uri=args.mic_uri,
-            command=_split(args.mic_command),
+            command=split_command(args.mic_command),
             rate=args.mic_command_rate,
             width=args.mic_command_width,
             channels=args.mic_command_channels,
@@ -271,6 +316,8 @@ async def main() -> None:
             volume_multiplier=args.mic_volume_multiplier,
             auto_gain=args.mic_auto_gain,
             noise_suppression=args.mic_noise_suppression,
+            seconds_to_mute_after_awake_wav=args.mic_seconds_to_mute_after_awake_wav,
+            mute_during_awake_wav=(not args.mic_no_mute_during_awake_wav),
         ),
         vad=VadSettings(
             enabled=args.vad,
@@ -281,12 +328,15 @@ async def main() -> None:
         ),
         wake=WakeSettings(
             uri=args.wake_uri,
-            command=_split(args.wake_command),
+            command=split_command(args.wake_command),
             names=args.wake_word_name,
+            refractory_seconds=args.wake_refractory_seconds
+            if args.wake_refractory_seconds > 0
+            else None,
         ),
         snd=SndSettings(
             uri=args.snd_uri,
-            command=_split(args.snd_command),
+            command=split_command(args.snd_command),
             rate=args.snd_command_rate,
             width=args.snd_command_width,
             channels=args.snd_command_channels,
@@ -296,19 +346,23 @@ async def main() -> None:
         ),
         event=EventSettings(
             uri=args.event_uri,
-            startup=_split(args.startup_command),
-            streaming_start=_split(args.streaming_start_command),
-            streaming_stop=_split(args.streaming_stop_command),
-            detect=_split(args.detect_command),
-            detection=_split(args.detection_command),
-            transcript=_split(args.transcript_command),
-            stt_start=_split(args.stt_start_command),
-            stt_stop=_split(args.stt_stop_command),
-            synthesize=_split(args.synthesize_command),
-            tts_start=_split(args.tts_start_command),
-            tts_stop=_split(args.tts_stop_command),
-            error=_split(args.error_command),
+            startup=split_command(args.startup_command),
+            streaming_start=split_command(args.streaming_start_command),
+            streaming_stop=split_command(args.streaming_stop_command),
+            detect=split_command(args.detect_command),
+            detection=split_command(args.detection_command),
+            played=split_command(args.tts_played_command),
+            transcript=split_command(args.transcript_command),
+            stt_start=split_command(args.stt_start_command),
+            stt_stop=split_command(args.stt_stop_command),
+            synthesize=split_command(args.synthesize_command),
+            tts_start=split_command(args.tts_start_command),
+            tts_stop=split_command(args.tts_stop_command),
+            error=split_command(args.error_command),
+            connected=split_command(args.connected_command),
+            disconnected=split_command(args.disconnected_command),
         ),
+        debug_recording_dir=args.debug_recording_dir,
     )
 
     satellite: SatelliteBase
@@ -324,7 +378,7 @@ async def main() -> None:
         satellite = AlwaysStreamingSatellite(settings)
 
     if args.startup_command:
-        await run_event_command(_split(args.startup_command))
+        await run_event_command(split_command(args.startup_command))
 
     _LOGGER.info("Ready")
 
@@ -349,7 +403,7 @@ async def main() -> None:
             args.zeroconf_host,
         )
 
-    satellite_task = asyncio.create_task(satellite.run())
+    satellite_task = asyncio.create_task(satellite.run(), name="satellite run")
 
     try:
         await server.run(partial(SatelliteEventHandler, wyoming_info, satellite, args))
@@ -363,84 +417,12 @@ async def main() -> None:
 # -----------------------------------------------------------------------------
 
 
-class SatelliteEventHandler(AsyncEventHandler):
-    """Event handler for clients."""
-
-    def __init__(
-        self,
-        wyoming_info: Info,
-        satellite: SatelliteBase,
-        cli_args: argparse.Namespace,
-        *args,
-        **kwargs,
-    ) -> None:
-        super().__init__(*args, **kwargs)
-
-        self.cli_args = cli_args
-        self.wyoming_info_event = wyoming_info.event()
-        self.client_id = str(time.monotonic_ns())
-        self.satellite = satellite
-
-    # -------------------------------------------------------------------------
-
-    async def handle_event(self, event: Event) -> bool:
-        """Handle events from the server."""
-        if Describe.is_type(event.type):
-            await self.write_event(self.wyoming_info_event)
-            return True
-
-        if self.satellite.server_id is None:
-            # Take over after a problem occurred
-            self.satellite.set_server(self.client_id, self.writer)
-        elif self.satellite.server_id != self.client_id:
-            # New connection
-            _LOGGER.debug("Connection cancelled: %s", self.client_id)
-            return False
-
-        await self.satellite.event_from_server(event)
-
-        return True
-
-    async def disconnect(self) -> None:
-        """Server disconnect."""
-        if self.satellite.server_id == self.client_id:
-            self.satellite.clear_server()
-
-
-# -----------------------------------------------------------------------------
-
-
-def get_mac_address() -> str:
-    """Return MAC address formatted as hex with no colons."""
-    return "".join(
-        # pylint: disable=consider-using-f-string
-        ["{:02x}".format((uuid.getnode() >> ele) & 0xFF) for ele in range(0, 8 * 6, 8)][
-            ::-1
-        ]
-    )
-
-
-def needs_webrtc(args: argparse.Namespace) -> bool:
-    """Return True if webrtc must be used."""
-    return (args.mic_noise_suppression > 0) or (args.mic_auto_gain > 0)
-
-
-def needs_silero(args: argparse.Namespace) -> bool:
-    """Return True if silero-vad must be used."""
-    return args.vad
-
-
-def _split(command: Optional[str]) -> Optional[List[str]]:
-    if not command:
-        return None
-
-    return shlex.split(command)
-
-
-# -----------------------------------------------------------------------------
-
-if __name__ == "__main__":
+def run():
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
+
+
+if __name__ == "__main__":
+    run()

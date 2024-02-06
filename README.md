@@ -8,12 +8,27 @@ Remote voice satellite using the [Wyoming protocol](https://github.com/rhasspy/w
 
 See [the tutorial](docs/tutorial_2mic.md) to build a satellite using a [Raspberry Pi Zero 2 W](https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/) and a [ReSpeaker 2Mic HAT](https://wiki.keyestudio.com/Ks0314_keyestudio_ReSpeaker_2-Mic_Pi_HAT_V1.0).
 
+Video tutorials:
+
+* [Wyoming Voice Satellite with ChatGPT](https://www.youtube.com/watch?v=eTKgc0YDCwE)
+* [Local ChatGPT Voice Assistant](https://www.youtube.com/watch?v=pAKqKTkx5X4)
+
+---
+
 Requires:
 
 * Python 3.7+ (tested on 3.9+)
 * A microphone
 
 ## Installation
+
+Install the necessary system dependencies:
+
+``` sh
+sudo apt-get install python3-venv python3-pip
+```
+
+Then run the install script:
 
 ``` sh
 script/setup
@@ -110,6 +125,8 @@ script/run \
 
 Audio will only be streamed to the server after the wake word has been detected.
 
+Once a wake word has been detected, it can not be detected again for several seconds (called the "refractory period"). You can change this with `--wake-refractory-seconds <SECONDS>`.
+
 Note that `--vad` is unnecessary when connecting to a local instance of openwakeword.
 
 ## Sounds
@@ -156,8 +173,11 @@ Satellites can respond to events from the server by running commands:
 * `--stt-start-command` - user started speaking (no stdin)
 * `--stt-stop-command` - user stopped speaking (no stdin)
 * `--synthesize-command` - text-to-speech text is returned (text on stdin)
-* `--tts-start-command` - text-to-speech response started (no stdin)
-* `--tts-stop-command` - text-to-speech response stopped (no stdin)
+* `--tts-start-command` - text-to-speech response started streaming from server (no stdin)
+* `--tts-stop-command` - text-to-speech response stopped streaming from server. Can still being played by snd service (no stdin)
+* `--tts-played-command` - text-to-speech audio finished playing (no stdin)
 * `--error-command` - an error was sent from the server (text on stdin)
+* `--connected-command` - satellite connected to server
+* `--disconnected-command` - satellite disconnected from server
 
 For more advanced scenarios, use an event service (`--event-uri`). See `wyoming_satellite/example_event_client.py` for a basic client that just logs events.
