@@ -965,6 +965,7 @@ class AlwaysStreamingSatellite(SatelliteBase):
         self, event: Event, audio_bytes: Optional[bytes] = None
     ) -> None:
         if (not self.is_streaming) or self.microphone_muted:
+            _LOGGER.debug("event_from_mic 968: Microphone is muted")
             return
 
         if AudioChunk.is_type(event.type):
@@ -1046,6 +1047,7 @@ class VadStreamingSatellite(SatelliteBase):
             or self.microphone_muted
             or self._is_paused
         ):
+            _LOGGER.debug("event_from_mic 1050: Microphone is muted")
             return
 
         # Only unpack chunk once
@@ -1242,6 +1244,7 @@ class WakeStreamingSatellite(SatelliteBase):
             or self.microphone_muted
             or self._is_paused
         ):
+            _LOGGER.debug("event_from_mic 1247: Microphone is muted")
             return
 
         # Debug audio recording
