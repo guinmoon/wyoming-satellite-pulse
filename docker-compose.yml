@@ -5,10 +5,11 @@ services:
     image: gunimoon/wyoming-satellite
     restart: unless-stopped    
     volumes:
-      - ./wyoming-satellite/sounds:/sounds
+      - ./sounds:/sounds
       - ~/.config/pulse:/root/.config/pulse
     ports:
       - "10700:10700"
+    network_mode: host
     command:    
       - "--debug"
       - "--name"
@@ -34,4 +35,6 @@ services:
       # - "--wake-word-name"
       # - "wall-e"
     environment:
-      - "PULSE_SERVER=host.docker.internal"
+    # - "PULSE_SERVER=host.docker.internal
+      - "PULSE_SERVER=127.0.0.1"
+# Dont forget: pactl load-module module-native-protocol-tcp
