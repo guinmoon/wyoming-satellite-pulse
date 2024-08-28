@@ -13,7 +13,7 @@ services:
     command:    
       - "--debug"
       - "--name"
-      - "living_room"
+      - "kitchen_satellite"
       - "--uri"
       - "tcp://0.0.0.0:10700"
       # - "--mic-uri"
@@ -28,13 +28,22 @@ services:
       - "/sounds/awake.wav"
       - "--done-wav"
       - "/sounds/done.wav"
+      - "--timer-started-command"
+      - "/sounds/timer_started.sh"
       # - "--event-uri"
       # - "tcp://127.0.0.1:10500"
       # - "--wake-uri"
       # - "tcp://openwakeword:10400"
       # - "--wake-word-name"
       # - "wall-e"
+      - "--timer-finished-wav"     
+      - "/sounds/timer_finished.wav"
+      - "--timer-finished-wav-repeat"
+      - "5"
+      - "2"
+      - "--mic-noise-suppression"
+      - "1"
+      - "--vad"
     environment:
     # - "PULSE_SERVER=host.docker.internal
       - "PULSE_SERVER=127.0.0.1"
-# Dont forget: pactl load-module module-native-protocol-tcp
