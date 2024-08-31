@@ -1,3 +1,6 @@
 #!/usr/bin/env bash
+
+python3 /app/wyoming_satellite/server.py --uri tcp://0.0.0.0:10500 --websocket-host 0.0.0.0 --debug &
+
 /app/script/run \
     --uri tcp://0.0.0.0:10700 "$@"
