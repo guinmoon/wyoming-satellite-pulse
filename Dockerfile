@@ -18,6 +18,8 @@ RUN script/setup
 COPY script/run ./script/
 COPY docker/run ./
 
+RUN pip install -r /app/requirements.txt 
+
 EXPOSE 10700
 
 ENTRYPOINT ["/app/run"]
